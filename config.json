@@ -1,11 +1,11 @@
 {
     "__comments":               "Here is the config file for this code!",
-    "dataset":                  "",
+    "dataset":                  "ADNI1_new",
     "external_dataset":         ["ADNI1"],
-    "folds":                    [],
+    "folds":                    [0],
     "gpus":                     [0],
     "seed":                     0,
-    "Data_dir":                 "",
+    "Data_dir":                 "data/new_data_prob/",
     "Data_dir_ex":              ["data/ADNI1/"],
     "cnn": {
         "fil_num":              10,
