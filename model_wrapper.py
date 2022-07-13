@@ -68,6 +68,7 @@ class CNN_Wrapper:
 
     def cross_validation(self, cross_index):
         self.cross_index = cross_index
+        self.checkpoint_dir = './checkpoint_dir/{}_exp{}/'.format(self.model_name, self.cross_index)
         with open("lookupcsv/{}.csv".format(self.dataset), 'r') as csv_file:
             num = len(list(csv.reader(csv_file))) // 10
         start = int(self.cross_index * num)
