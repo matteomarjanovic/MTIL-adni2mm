@@ -86,7 +86,7 @@ class CNN_Wrapper:
         print('validating ...')
 
         # Load the model
-        self.model.load_state_dict(torch.load('checkpoint_dir/valid/valid.pth'), strict=False)
+        self.model.load_state_dict(torch.load('checkpoint_dir/valid/valid.pth', map_location='cuda:0'), strict=False)
         self.model.train(False)
 
         with torch.no_grad():

@@ -4,7 +4,11 @@ import sys
 from utils import read_json
 from model_wrapper import CNN_Wrapper
 import torch
-import multiprocessing
+import torch.multiprocessing as multiprocessing
+try:
+    multiprocessing.set_start_method('spawn')
+except RuntimeError:
+    pass
 import time
 torch.backends.benchmark = True
 
