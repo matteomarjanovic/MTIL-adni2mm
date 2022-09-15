@@ -164,17 +164,26 @@ class CNN_Wrapper:
 
     def train_model_epoch(self):
         self.model.train(True)
+        idx = 0
         for inputs, labels, demors in self.train_dataloader:
+            idx += 1
             inputs, labels, demors = inputs.cuda(), labels.cuda(), demors.cuda()
             self.model.zero_grad()
             loss = torch.tensor(0.0, requires_grad=True).cuda()
             clf_output, reg_output, per_loss = self.model(inputs)
             clf_loss = self.criterion_clf(clf_output, labels)
             reg_loss = self.criterion_reg(reg_output, torch.unsqueeze(demors, dim=1))
-            con_reg_group_loss = self.get_con_reg_group_loss.apply(reg_output, demors, self.frequency_dict, labels)
+            con_reg_group_loss = self.get_con_reg_group_loss.apply(reg_output, demors, self.frequency_dict, labels)            
             loss = loss + clf_loss + reg_loss + torch.mean(con_reg_group_loss) + torch.mean(per_loss)
             loss.backward()
             self.optimizer.step()
+
+            if idx == len(self.train_dataloader):
+                with open(f'losses/loss_per_epoch_test1_{self.cross_index}.csv', 'a', newline='') as csvfile:
+                    spamwriter = csv.writer(csvfile, delimiter=',')
+                    con_reg = torch.mean(con_reg_group_loss)
+                    per_l = torch.mean(per_loss)
+                    spamwriter.writerow([loss.item(), clf_loss.item(), reg_loss.item(), con_reg.item(), per_l.item()])
 
     def valid_model_epoch(self):
         with torch.no_grad():
