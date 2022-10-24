@@ -2,11 +2,12 @@ import torch
 
 
 class ConRegGroupLoss(torch.autograd.Function):
-    def __init__(self):
+    def __init__(self, device):
         self.ad_mmse_frequency_dict = dict()
         self.ad_mmse_frequency_dict_completion = dict()
         self.cn_mmse_frequency_dict = dict()
         self.cn_mmse_frequency_dict_completion = dict()
+        self.device = device
 
     def update(self, label_list, mmse_list):
         self.ad_mmse_frequency_dict.clear()
@@ -27,8 +28,8 @@ class ConRegGroupLoss(torch.autograd.Function):
         self.cn_mmse_frequency_dict_completion = self.completion(self.cn_mmse_frequency_dict)
         self.ad_mmse_frequency_dict_completion = self.completion(self.ad_mmse_frequency_dict)
 
-        cn_frequency = torch.zeros((2, len(self.cn_mmse_frequency_dict_completion))).cuda()
-        ad_frequency = torch.zeros((2, len(self.ad_mmse_frequency_dict_completion))).cuda()
+        cn_frequency = torch.zeros((2, len(self.cn_mmse_frequency_dict_completion))).to(self.device)
+        ad_frequency = torch.zeros((2, len(self.ad_mmse_frequency_dict_completion))).to(self.device)
 
         keys = sorted(self.cn_mmse_frequency_dict_completion.keys())
         for i, item in enumerate(keys):
@@ -63,7 +64,7 @@ class ConRegGroupLoss(torch.autograd.Function):
     def reg_loss(reg_score, score, frequency):
         start = score if score <= reg_score else reg_score
         end = reg_score if score <= reg_score else score
-        frequency_diff = torch.tensor(0.0).cuda()
+        frequency_diff = torch.tensor(0.0).to(reg_score.device)
         for i in range(frequency.shape[1]):
             if start <= frequency[0][i] <= end:
                 frequency_diff += frequency[1][i] * 0.01
@@ -75,7 +76,7 @@ class ConRegGroupLoss(torch.autograd.Function):
     def forward(ctx, reg_output, demors, frequency, labels):
         cn_frequency, ad_frequency = frequency
         reg_output.squeeze(dim=1)
-        con_reg_group_loss = torch.zeros_like(reg_output, requires_grad=True).cuda()
+        con_reg_group_loss = torch.zeros_like(reg_output, requires_grad=True).to(reg_output.device)
 
         for i in range(reg_output.shape[0]):
             if labels[i] == 0:
@@ -94,7 +95,7 @@ class ConRegGroupLoss(torch.autograd.Function):
         grad_reg_output = grad_demors = grad_frequency = grad_labels = None
 
         if ctx.needs_input_grad[0]:
-            grad_reg_output = torch.zeros((reg_output.shape[0], 1), requires_grad=True).cuda()
+            grad_reg_output = torch.zeros((reg_output.shape[0], 1), requires_grad=True).to(reg_output.device)
             for i in range(reg_output.shape[0]):
                 if labels[i] == 0:
                     frequency_dict = cn_frequency
@@ -107,7 +108,7 @@ class ConRegGroupLoss(torch.autograd.Function):
                 elif frequency_dict[0][-1] < reg_output[i]:
                     grad_reg_output[i][0] = grad_reg_output[i][0] + frequency_dict[1][-1]
                     continue
-                last = torch.tensor(0.0).cuda()
+                last = torch.tensor(0.0).to(reg_output.device)
 
                 for j in range(frequency_dict.shape[1]):
                     if frequency_dict[0][j] > reg_output[i]:

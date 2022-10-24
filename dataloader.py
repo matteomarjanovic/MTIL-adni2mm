@@ -83,7 +83,6 @@ def aug_vol(inv,normalize=True):
             inv = tr
             del tr
 
-
     # flip on x-axes
     if random.random() > .5:
         inv = inv[::-1,:,:]
@@ -97,7 +96,7 @@ class CNN_Data(Dataset):
     csv files ./lookuptxt/*.csv contains MRI filenames along with demographic and diagnosis information 
     """
     def __init__(self, Data_dir, stage, dataset, cross_index, start, end, seed=1000):
-        random.seed(seed)
+        # random.seed(seed)
         self.Data_dir = Data_dir
         self.Data_list, self.Label_list, self.demor_list = read_csv_mt('./lookupcsv/{}.csv'.format(dataset))
         train_data_list = list()

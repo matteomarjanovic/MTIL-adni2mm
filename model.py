@@ -86,7 +86,7 @@ class Attention(nn.Module, ABC):
                 attention[i][j] = sa[i][j] * ca[i][j]
         # for i in range(attention.shape[1]):
         #     attention[:, i] = attention[:, i] * ca[:, i]
-        anti_attention = torch.ones(attention.shape).cuda() - attention
+        anti_attention = torch.ones(attention.shape).to(attention.device) - attention
         return attention, anti_attention
 
 
@@ -168,7 +168,7 @@ class _CNN(nn.Module, ABC):
         )
 
     def forward(self, x):
-        per_loss = torch.zeros(x.shape[0]).cuda()
+        per_loss = torch.zeros(x.shape[0]).to(x.device)
         x_c = self.block_c_1(x)
         x_r = self.block_r_1(x)
         a_c, anti_a_c = self.attention_c_1(x_c)
@@ -224,7 +224,7 @@ class _CNN(nn.Module, ABC):
 
         x1 = x1.view(x1.shape[0], -1)
         x2 = x2.view(x2.shape[0], -1)
-        per_loss = torch.zeros(x1.shape[0]).cuda()
+        per_loss = torch.zeros(x1.shape[0]).to(x1.device)
         loss = torch.nn.L1Loss()
         for i in range(x1.shape[0]):
             per_loss[i] += loss(x1[i], x2[i])

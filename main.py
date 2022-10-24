@@ -38,8 +38,7 @@ def cnn_main(process, gpu_index, fold_index):
         if fold_index == -1:
             cnn.validate()
         else:
-            if not os.path.exists("checkpoint_dir/cnn_exp{}".format(fold_index)):
-                os.mkdir("checkpoint_dir/cnn_exp{}".format(fold_index))
+            os.makedirs(f"checkpoint_dir/cnn_exp{fold_index}", exist_ok=True)
             cnn.cross_validation(fold_index)
 
 
@@ -62,6 +61,7 @@ def main(argv):
             p.start()
             j += 1
             time.sleep(60)
+            time.sleep(100000)
     else:
         p = multiprocessing.Process(target=cnn_main, args=(process, gpus[0], -1,))
         p.start()
