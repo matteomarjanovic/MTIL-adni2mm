@@ -1,12 +1,12 @@
 {
-    "__comments":               "Configuration for the mtl train",
-    "process":                  "train",
-    "dataset":                  "ADNI1_prob_full_data",
+    "__comments":               "MTL (LMCI vs AD) NO distribution loss",
+    "process":                  "train_no_distr_loss",
+    "dataset":                  "ADNI1_full_data_LMCI_prob",
     "external_dataset":         ["ADNI1"],
-    "folds":                    [0, 1, 2],
+    "folds":                    [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
     "gpu_idx":                  0,
     "seed":                     0,
-    "Data_dir":                 "/media/data/atoaiari/datasets/adni_data4/",
+    "Data_dir":                 "/media/data/mmarjanovic/data7/",
     "Data_dir_ex":              ["data/ADNI1/"],
     "cnn": {
         "fil_num":              10,

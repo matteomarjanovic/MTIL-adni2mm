@@ -89,7 +89,9 @@ class CNN_Wrapper:
         self.prepare_dataloader(start, end)
 
         if self.process == "train":
-            self.train()
+            self.train(distribution_loss=True)
+        if self.process == "train_no_distr_loss":
+            self.train(distribution_loss=False)
         if self.process == "test":
             self.test()
         if self.process == "classification":
@@ -159,7 +161,7 @@ class CNN_Wrapper:
         self.test_dataloader = DataLoader(test_data, batch_size=self.batch_size, shuffle=False, num_workers=0)
 
 
-    def train(self):
+    def train(self, distribution_loss=True):
         # Train the model
         print("Fold {} is training ...".format(self.cross_index))
 
@@ -171,7 +173,7 @@ class CNN_Wrapper:
         self.optimal_epoch = 0
 
         while self.epoch < self.train_epoch:
-            self.train_model_epoch()
+            self.train_model_epoch(distribution_loss)
             valid_matrix, valid_mse = self.valid_model_epoch()
             with open(self.checkpoint_dir + "valid_result.txt", 'a') as file:
                 file.write(str(self.epoch) + ' ' + str(valid_matrix) + " " +
@@ -186,7 +188,7 @@ class CNN_Wrapper:
         return self.optimal_valid_metric
 
 
-    def train_model_epoch(self):
+    def train_model_epoch(self, distribution_loss=True):
         self.model.train()        
         for inputs, labels, demors in tqdm(self.train_dataloader, desc="Train Epoch"):
             # start_timer = time.perf_counter()
@@ -199,10 +201,13 @@ class CNN_Wrapper:
             clf_loss = self.criterion_clf(clf_output, labels)
             reg_loss = self.criterion_reg(reg_output, torch.unsqueeze(demors, dim=1))
             # timer_loss = time.perf_counter()
-            con_reg_group_loss = self.get_con_reg_group_loss.apply(reg_output, demors, self.frequency_dict, labels)     
-            # print(f"calculate loss time: {time.perf_counter() - timer_loss}")       
-            loss = clf_loss + reg_loss + torch.mean(con_reg_group_loss) + torch.mean(per_loss)
-            wandb.log({"train_loss": loss, "train_clf_loss": clf_loss, "train_regr_loss": reg_loss, "train_con_reg_group_loss": torch.mean(con_reg_group_loss), "train_interaction_loss": torch.mean(per_loss), "epoch": self.epoch})
+            loss = clf_loss + reg_loss + torch.mean(per_loss)
+            if distribution_loss:
+                con_reg_group_loss = self.get_con_reg_group_loss.apply(reg_output, demors, self.frequency_dict, labels)  
+                loss += torch.mean(con_reg_group_loss)
+                wandb.log({"train_con_reg_group_loss": torch.mean(con_reg_group_loss), "epoch": self.epoch})
+            # print(f"calculate loss time: {time.perf_counter() - timer_loss}") 
+            wandb.log({"train_loss": loss, "train_clf_loss": clf_loss, "train_regr_loss": reg_loss, "train_interaction_loss": torch.mean(per_loss), "epoch": self.epoch})
             # timer_update = time.perf_counter()
             loss.backward()
             self.optimizer.step()
@@ -348,7 +353,7 @@ class CNN_Wrapper:
                                                                    self.optimal_epoch)), strict=False)
         self.model.eval()
         with torch.no_grad():
-            for dataset in self.dataset + self.external_dataset:
+            for dataset in [self.dataset]:# + self.external_dataset:
                 for stage in ['train', 'valid', 'test']:
                     data_dir = self.Data_dir
                     if dataset != self.dataset:
