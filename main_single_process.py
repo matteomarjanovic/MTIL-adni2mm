@@ -4,6 +4,7 @@ import os
 
 from utils import read_json
 from model_wrapper import CNN_Wrapper
+from model_wrapper_3class import CNN_Wrapper_3class
 import torch
 import torch.multiprocessing as multiprocessing
 try:
@@ -28,21 +29,38 @@ def cnn_main(config, process, gpu_index, fold_index):
     # CNN_Wrapper.cross_validation.
 
     # with torch.cuda.device(gpu_index):
-    cnn = CNN_Wrapper(fil_num=cnn_setting['fil_num'],
-                        drop_rate=cnn_setting['drop_rate'],
-                        batch_size=cnn_setting['batch_size'],
-                        balanced=cnn_setting['balanced'],
-                        learn_rate=cnn_setting['learning_rate'],
-                        train_epoch=cnn_setting['train_epochs'],
-                        dataset=config["dataset"],
-                        data_dir=config['Data_dir'],
-                        external_dataset=config["external_dataset"],
-                        data_dir_ex=config["Data_dir_ex"],
-                        seed=config["seed"],
-                        model_name='cnn',
-                        metric='accuracy',
-                        device=gpu_index,
-                        process=process)
+    if config['n_classes'] == 3:
+        cnn = CNN_Wrapper_3class(fil_num=cnn_setting['fil_num'],
+                            drop_rate=cnn_setting['drop_rate'],
+                            batch_size=cnn_setting['batch_size'],
+                            balanced=cnn_setting['balanced'],
+                            learn_rate=cnn_setting['learning_rate'],
+                            train_epoch=cnn_setting['train_epochs'],
+                            dataset=config["dataset"],
+                            data_dir=config['Data_dir'],
+                            external_dataset=config["external_dataset"],
+                            data_dir_ex=config["Data_dir_ex"],
+                            seed=config["seed"],
+                            model_name='cnn',
+                            metric='accuracy',
+                            device=gpu_index,
+                            process=process)
+    else:
+        cnn = CNN_Wrapper(fil_num=cnn_setting['fil_num'],
+                            drop_rate=cnn_setting['drop_rate'],
+                            batch_size=cnn_setting['batch_size'],
+                            balanced=cnn_setting['balanced'],
+                            learn_rate=cnn_setting['learning_rate'],
+                            train_epoch=cnn_setting['train_epochs'],
+                            dataset=config["dataset"],
+                            data_dir=config['Data_dir'],
+                            external_dataset=config["external_dataset"],
+                            data_dir_ex=config["Data_dir_ex"],
+                            seed=config["seed"],
+                            model_name='cnn',
+                            metric='accuracy',
+                            device=gpu_index,
+                            process=process)
 
     if fold_index == -1:
         cnn.validate()

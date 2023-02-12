@@ -1,15 +1,18 @@
 from torch.utils.data import Dataset, DataLoader
+from model_3class import _CNN_3class
 from model import _CNN
 from model_class import _CNN_classification
 from model_regr import _CNN_regression
 from dataloader import CNN_Data
 from loss import ConRegGroupLoss
 from utils import matrix_sum, get_acc, get_MCC, get_confusion_matrix, write_raw_score, squared_error
+from sklearn.metrics import confusion_matrix, accuracy_score
 import os
 import csv
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import numpy as np
 
 from torch.utils.data import ConcatDataset
 from tqdm import tqdm
@@ -17,7 +20,7 @@ import wandb
 import time
 
 
-class CNN_Wrapper:
+class CNN_Wrapper_3class:
     def __init__(self,
                  fil_num,
                  drop_rate,
@@ -73,7 +76,7 @@ class CNN_Wrapper:
         self.regression_model = _CNN_regression(fil_num=fil_num, drop_rate=drop_rate).to(self.device)
         self.optimal_epoch = self.epoch
         self.optimal_valid_mse = 99999.0
-        self.optimal_valid_matrix = [[0, 0], [0, 0]]
+        self.optimal_valid_matrix = np.zeros((3,3))
         self.optimal_valid_metric = 0.0
         self.frequency_dict = None
 
@@ -118,18 +121,21 @@ class CNN_Wrapper:
                 dataloader = DataLoader(data, batch_size=2, shuffle=False)
                 f_clf = open(self.checkpoint_dir + 'raw_score_clf_{}_{}.txt'.format(dataset, stage), 'w')
                 f_reg = open(self.checkpoint_dir + 'raw_score_reg_{}_{}.txt'.format(dataset, stage), 'w')
-                matrix = [[0, 0], [0, 0]]
+                matrix = np.zeros((3,3))
                 mse = 0.0
                 for idx, (inputs, labels, demors) in enumerate(dataloader):
                     inputs, labels = inputs.to(self.device), labels.to(self.device)
                     clf_output, reg_output, _ = self.model(inputs)
                     write_raw_score(f_clf, clf_output, labels)
-                    matrix = matrix_sum(matrix, get_confusion_matrix(clf_output, labels))
+                    # matrix = matrix_sum(matrix, get_confusion_matrix(clf_output, labels))
+                    matrix = matrix + confusion_matrix(labels, clf_output)
                     mse += squared_error(reg_output, demors)
                     write_raw_score(f_reg, reg_output, demors)
-                mse /= (matrix[0][0] + matrix[0][1] + matrix[1][0] + matrix[1][1])
+                # mse /= (matrix[0][0] + matrix[0][1] + matrix[1][0] + matrix[1][1])
+                mse /= np.sum(matrix)
                 print(dataset + "-" + stage + ' confusion matrix ', matrix)
-                print('accuracy:', "%.4f" % self.eval_metric(matrix), 'and mean squared error ', mse)
+                acc = accuracy_score(labels, clf_output)
+                print('accuracy:', "%.4f" % acc, 'and mean squared error ', mse)
                 f_clf.close()
                 f_reg.close()
 
@@ -166,9 +172,10 @@ class CNN_Wrapper:
         print("Fold {} is training ...".format(self.cross_index))
 
         self.optimizer = optim.Adam(self.model.parameters(), lr=self.learn_rate, betas=(0.5, 0.999))
-        self.criterion_clf = nn.CrossEntropyLoss(weight=torch.Tensor([1, self.imbalanced_ratio])).to(self.device)
+        #self.criterion_clf = nn.CrossEntropyLoss(weight=torch.Tensor([1, self.imbalanced_ratio])).to(self.device)
+        self.criterion_clf = nn.CrossEntropyLoss().to(self.device)
         self.criterion_reg = nn.SmoothL1Loss(reduction='mean').to(self.device)
-        self.optimal_valid_matrix = [[0, 0], [0, 0]]
+        self.optimal_valid_matrix = np.zeros((3, 3))
         self.optimal_valid_metric = 0
         self.optimal_epoch = 0
 
@@ -179,9 +186,10 @@ class CNN_Wrapper:
                 file.write(str(self.epoch) + ' ' + str(valid_matrix) + " " +
                            str(round(self.eval_metric(valid_matrix), 4)) + ' ' + str(valid_mse) + ' ' + '\n')
             print('{}th epoch validation confusion matrix:'.format(self.epoch), valid_matrix)
-            print('eval_metric:', "%.4f" % self.eval_metric(valid_matrix), 'and mean squared error ', valid_mse.item())
-            wandb.log({"val_mse": valid_mse, "val_acc": self.eval_metric(valid_matrix), "epoch": self.epoch})
-            self.save_checkpoint(valid_matrix, valid_mse)
+            acc = np.trace(valid_matrix) / np.sum(valid_matrix)
+            print('eval_metric:', "%.4f" % acc, 'and mean squared error ', valid_mse.item())
+            wandb.log({"val_mse": valid_mse, "val_acc": acc, "epoch": self.epoch})
+            self.save_checkpoint(valid_matrix, valid_mse, acc)
             self.epoch += 1
         print('Best model saved at the {}th epoch:'.format(self.optimal_epoch), self.optimal_valid_metric,
               self.optimal_valid_matrix)
@@ -218,7 +226,7 @@ class CNN_Wrapper:
     def valid_model_epoch(self):
         self.model.eval()
         with torch.no_grad():
-            valid_matrix = [[0, 0], [0, 0]]
+            valid_matrix = np.zeros((3, 3))
             mse = 0.0
             for inputs, labels, demors in tqdm(self.valid_dataloader, desc="Test Epoch"):
                 inputs, labels, demors = inputs.to(self.device), labels.to(self.device), demors.to(self.device)
@@ -227,9 +235,11 @@ class CNN_Wrapper:
                 reg_loss = self.criterion_reg(reg_output, torch.unsqueeze(demors, dim=1))
                 loss = clf_loss + reg_loss
                 wandb.log({"val_loss": loss, "val_clf_loss": clf_loss, "val_regr_loss": reg_loss, "epoch": self.epoch})
-                valid_matrix = matrix_sum(valid_matrix, get_confusion_matrix(clf_output, labels))
+                # valid_matrix = matrix_sum(valid_matrix, get_confusion_matrix(clf_output, labels))
+                valid_matrix = valid_matrix + confusion_matrix(clf_output, labels)
                 mse += squared_error(reg_output, demors)
-            mse /= (valid_matrix[0][0] + valid_matrix[0][1] + valid_matrix[1][0] + valid_matrix[1][1])
+            # mse /= (valid_matrix[0][0] + valid_matrix[0][1] + valid_matrix[1][0] + valid_matrix[1][1])
+            mse /= np.sum(valid_matrix)
         return valid_matrix, mse
 
     
@@ -238,7 +248,7 @@ class CNN_Wrapper:
 
         self.optimizer = optim.Adam(self.classification_model.parameters(), lr=self.learn_rate, betas=(0.5, 0.999))
         self.criterion_clf = nn.CrossEntropyLoss(weight=torch.Tensor([1, self.imbalanced_ratio])).to(self.device)
-        self.optimal_valid_matrix = [[0, 0], [0, 0]]
+        self.optimal_valid_matrix = np.zeros((3, 3))
         self.optimal_valid_metric = 0
         self.optimal_epoch = 0
 
@@ -256,20 +266,21 @@ class CNN_Wrapper:
             
             self.classification_model.eval()
             with torch.no_grad():
-                valid_matrix = [[0, 0], [0, 0]]
+                valid_matrix = np.zeros((3, 3))
                 for inputs, labels, demors in tqdm(self.valid_dataloader, desc="Test Epoch"):
                     inputs, labels = inputs.to(self.device), labels.to(self.device)
                     clf_output = self.classification_model(inputs)
-                    valid_matrix = matrix_sum(valid_matrix, get_confusion_matrix(clf_output, labels))
+                    valid_matrix = valid_matrix + confusion_matrix(clf_output, labels)
             valid_matrix = valid_matrix
 
             with open(self.checkpoint_dir + "classification_valid_result.txt", 'a') as file:
                 file.write(str(self.epoch) + ' ' + str(valid_matrix) + " " +
                            str(round(self.eval_metric(valid_matrix), 4))+ '\n')
             print('{}th epoch validation confusion matrix:'.format(self.epoch), valid_matrix)
-            print('eval_metric:', "%.4f" % self.eval_metric(valid_matrix))
-            wandb.log({"val_acc": self.eval_metric(valid_matrix), "epoch": self.epoch})
-            self.save_checkpoint(valid_matrix, 0)
+            acc = accuracy_score(labels, clf_output)
+            print('eval_metric:', "%.4f" % acc)
+            wandb.log({"val_acc": acc, "epoch": self.epoch})
+            # self.save_checkpoint(valid_matrix, valid_mse)
             self.epoch += 1
         print('Best model saved at the {}th epoch:'.format(self.optimal_epoch), self.optimal_valid_metric,
               self.optimal_valid_matrix)
@@ -281,7 +292,6 @@ class CNN_Wrapper:
 
         self.optimizer = optim.Adam(self.regression_model.parameters(), lr=self.learn_rate, betas=(0.5, 0.999))
         self.criterion_reg = nn.SmoothL1Loss(reduction='mean').to(self.device)
-        self.optimal_valid_matrix = [[0, 0], [0, 0]]
         self.optimal_valid_metric = 0
         self.optimal_epoch = 0
 
@@ -317,36 +327,19 @@ class CNN_Wrapper:
             with open(self.checkpoint_dir + out_file, 'a') as file:
                 file.write(str(self.epoch) + ' ' + str(mse) + '\n')
             print(f"{self.epoch}th epoch mean squared error: {mse}")
-            self.save_checkpoint_reg(mse)
             self.epoch += 1
 
         return self.optimal_valid_metric
         
 
-    def save_checkpoint(self, valid_matrix, valid_mse):
+    def save_checkpoint(self, valid_matrix, valid_mse, acc):
         # Choose the optimal model. The performance of AD detection task is prioritized
-        if (self.eval_metric(valid_matrix) > self.optimal_valid_metric) or \
-                (self.eval_metric(valid_matrix) == self.optimal_valid_metric and valid_mse < self.optimal_valid_mse):
+        if (acc > self.optimal_valid_metric) or \
+                (acc == self.optimal_valid_metric and valid_mse < self.optimal_valid_mse):
             self.optimal_epoch = self.epoch
             self.optimal_valid_matrix = valid_matrix
-            self.optimal_valid_metric = self.eval_metric(valid_matrix)
+            self.optimal_valid_metric = acc
             self.optimal_valid_mse = valid_mse
-            wandb.run.summary["best_accuracy"] = self.optimal_valid_metric * 100
-            wandb.run.summary["best_mse"] = self.optimal_valid_mse
-            # for root, Dir, Files in os.walk(self.checkpoint_dir):
-            #     for File in Files:
-            #         if File.endswith("pth"):
-            #             os.remove(os.path.join(self.checkpoint_dir, File))
-            # torch.save(self.model.state_dict(), '{}{}_{}.pth'.format(self.checkpoint_dir, self.model_name,
-            #                                                          self.optimal_epoch))
-
-    def save_checkpoint_reg(self, valid_mse):
-        # Choose the optimal model. The performance of AD detection task is prioritized
-        if (valid_mse < self.optimal_valid_mse):
-            self.optimal_epoch = self.epoch
-            self.optimal_valid_mse = valid_mse
-            wandb.run.summary["best_accuracy"] = 0
-            wandb.run.summary["best_mse"] = self.optimal_valid_mse
             # for root, Dir, Files in os.walk(self.checkpoint_dir):
             #     for File in Files:
             #         if File.endswith("pth"):
@@ -388,17 +381,17 @@ class CNN_Wrapper:
                         dataloader = self.test_dataloader
                     f_clf = open(self.checkpoint_dir + 'raw_score_clf_{}_{}.txt'.format(dataset, stage), 'w')
                     f_reg = open(self.checkpoint_dir + 'raw_score_reg_{}_{}.txt'.format(dataset, stage), 'w')
-                    matrix = [[0, 0], [0, 0]]
+                    matrix = np.zeros((3, 3))
                     mse = 0.0
                     for idx, (inputs, labels, demors) in enumerate(dataloader):
                         inputs, labels = inputs.to(self.device), labels.to(self.device)
                         clf_output, reg_output, _ = self.model(inputs)
                         write_raw_score(f_clf, clf_output, labels)
-                        matrix = matrix_sum(matrix, get_confusion_matrix(clf_output, labels))
+                        matrix = matrix + confusion_matrix(clf_output, labels)
                         mse += squared_error(reg_output, demors)
                         write_raw_score(f_reg, reg_output, demors)
-                    mse /= (matrix[0][0] + matrix[0][1] + matrix[1][0] + matrix[1][1])
+                    mse /= np.sum(matrix)
                     print(dataset + "-" + stage + ' confusion matrix ', matrix)
-                    print('accuracy:', "%.4f" % self.eval_metric(matrix), 'and mean squared error ', mse)
+                    print('accuracy:', "%.4f" % accuracy_score(clf_output, labels), 'and mean squared error ', mse)
                     f_clf.close()
                     f_reg.close()

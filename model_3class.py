@@ -119,9 +119,9 @@ class Interaction(nn.Module, ABC):
         return x
 
 
-class _CNN(nn.Module, ABC):
+class _CNN_3class(nn.Module, ABC):
     def __init__(self, fil_num, drop_rate):
-        super(_CNN, self).__init__()
+        super(_CNN_3class, self).__init__()
 
         self.block_c_1 = ConvLayer(1, fil_num, 0.1, (7, 2, 0), (3, 2, 0))
         self.block_c_2 = ConvLayer(fil_num, 2 * fil_num, 0.1, (5, 1, 2), (3, 2, 0))
@@ -160,8 +160,7 @@ class _CNN(nn.Module, ABC):
         self.classify = nn.Sequential(
             nn.LeakyReLU(),
             nn.Dropout(drop_rate),
-            nn.Linear(32, 2),
-        )
+            nn.Linear(32, 3), )
         self.regress = nn.Sequential(
             nn.LeakyReLU(),
             nn.Dropout(drop_rate),

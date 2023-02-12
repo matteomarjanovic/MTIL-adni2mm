@@ -112,12 +112,24 @@ class CNN_Data(Dataset):
                     continue
                 if end == -1 or start <= i - 1 <= end:
                     test_data_list.append(row[0])
-                    test_label_list.append(0 if row[1] == "AD" else 1)
+                    if row[1] == "CN":
+                        test_label_list.append(0)
+                    elif row[1] == "AD":
+                        test_label_list.append(1)
+                    else:
+                        test_label_list.append(2)
+                    # test_label_list.append(0 if row[1] == "AD" else 1)
                     # test_demor_list.append(int(row[2]))
                     test_demor_list.append(float(row[2]))
                 else:
                     train_data_list.append(row[0])
-                    train_label_list.append(0 if row[1] == "AD" else 1)
+                    if row[1] == "CN":
+                        train_label_list.append(0)
+                    elif row[1] == "AD":
+                        train_label_list.append(1)
+                    else:
+                        train_label_list.append(2)
+                    # train_label_list.append(0 if row[1] == "AD" else 1)
                     # train_demor_list.append(int(row[2]))
                     train_demor_list.append(float(row[2]))
         num = end - start
