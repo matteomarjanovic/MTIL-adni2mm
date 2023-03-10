@@ -4,3 +4,4 @@ checkpoint_dir/
 .vscode/
 wandb/
 scripts/
+mtlenv/
