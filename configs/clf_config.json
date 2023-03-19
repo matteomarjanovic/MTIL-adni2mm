@@ -1,5 +1,5 @@
 {
-    "__comments":               "ST classification train - ADNI1 full data (data4)",
+    "__comments":               "ST classification train with CBAM - ADNI1 & ADNI2 (lr 0.0005)",
     "process":                  "classification",
     "dataset":                  "ADNI1_prob_full_data",
     "external_dataset":         ["ADNI1"],
@@ -7,14 +7,14 @@
     "gpu_idx":                  0,
     "seed":                     0,
     "n_classes":                2,
-    "Data_dir":                 "/mnt/mydrive/Matteo/data4/",
+    "Data_dir":                 "/mnt/mydrive/Matteo/data_adni1_adni2/",
     "Data_dir_ex":              ["data/ADNI1/"],
     "cnn": {
         "fil_num":              10,
         "drop_rate":            0.137,
         "batch_size":           8,
         "balanced":             0,
-        "learning_rate":        0.0001,
+        "learning_rate":        0.0005,
         "train_epochs":         200
     }
 }

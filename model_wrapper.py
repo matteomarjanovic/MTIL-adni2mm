@@ -1,6 +1,6 @@
 from torch.utils.data import Dataset, DataLoader
 from model import _CNN
-from model_class import _CNN_classification
+from model_class_attention import _CNN_classification
 from model_regr import _CNN_regression
 from dataloader import CNN_Data
 from loss import ConRegGroupLoss
@@ -180,7 +180,7 @@ class CNN_Wrapper:
                            str(round(self.eval_metric(valid_matrix), 4)) + ' ' + str(valid_mse) + ' ' + '\n')
             print('{}th epoch validation confusion matrix:'.format(self.epoch), valid_matrix)
             print('eval_metric:', "%.4f" % self.eval_metric(valid_matrix), 'and mean squared error ', valid_mse.item())
-            wandb.log({"val_mse": valid_mse, "val_acc": self.eval_metric(valid_matrix), "epoch": self.epoch})
+            wandb.log({"val_mse": valid_mse, "val_acc": self.eval_metric(valid_matrix)})
             self.save_checkpoint(valid_matrix, valid_mse)
             self.epoch += 1
         print('Best model saved at the {}th epoch:'.format(self.optimal_epoch), self.optimal_valid_metric,
@@ -205,14 +205,16 @@ class CNN_Wrapper:
             if distribution_loss:
                 con_reg_group_loss = self.get_con_reg_group_loss.apply(reg_output, demors, self.frequency_dict, labels)  
                 loss += torch.mean(con_reg_group_loss)
-                wandb.log({"train_con_reg_group_loss": torch.mean(con_reg_group_loss), "epoch": self.epoch})
             # print(f"calculate loss time: {time.perf_counter() - timer_loss}") 
-            wandb.log({"train_loss": loss, "train_clf_loss": clf_loss, "train_regr_loss": reg_loss, "train_interaction_loss": torch.mean(per_loss), "epoch": self.epoch})
             # timer_update = time.perf_counter()
             loss.backward()
             self.optimizer.step()
             # print(f"timer update: {time.perf_counter() - timer_update}")
             # print(f"train loop time: {time.perf_counter() - start_timer}")
+        if distribution_loss:
+            wandb.log({"train_con_reg_group_loss": torch.mean(con_reg_group_loss)}, commit=False)
+        wandb.log({"train_loss": loss, "train_clf_loss": clf_loss, "train_regr_loss": reg_loss, "train_interaction_loss": torch.mean(per_loss)}, commit=False)
+        
 
 
     def valid_model_epoch(self):
@@ -226,10 +228,10 @@ class CNN_Wrapper:
                 clf_loss = self.criterion_clf(clf_output, labels)
                 reg_loss = self.criterion_reg(reg_output, torch.unsqueeze(demors, dim=1))
                 loss = clf_loss + reg_loss
-                wandb.log({"val_loss": loss, "val_clf_loss": clf_loss, "val_regr_loss": reg_loss, "epoch": self.epoch})
                 valid_matrix = matrix_sum(valid_matrix, get_confusion_matrix(clf_output, labels))
                 mse += squared_error(reg_output, demors)
             mse /= (valid_matrix[0][0] + valid_matrix[0][1] + valid_matrix[1][0] + valid_matrix[1][1])
+        wandb.log({"val_loss": loss, "val_clf_loss": clf_loss, "val_regr_loss": reg_loss}, commit=False)
         return valid_matrix, mse
 
     
@@ -250,9 +252,9 @@ class CNN_Wrapper:
                 clf_output = self.classification_model(inputs)
                 clf_loss = self.criterion_clf(clf_output, labels)       
                 loss = clf_loss
-                wandb.log({"train_clf_loss": loss, "epoch": self.epoch})
                 loss.backward()
                 self.optimizer.step()
+            wandb.log({"train_clf_loss": loss}, commit=False)
             
             self.classification_model.eval()
             with torch.no_grad():
@@ -296,10 +298,11 @@ class CNN_Wrapper:
                 if distribution_loss:
                     con_reg_group_loss = self.get_con_reg_group_loss.apply(reg_output, demors, self.frequency_dict, labels)            
                     loss += torch.mean(con_reg_group_loss)   
-                    wandb.log({"train_con_reg_group_loss": torch.mean(con_reg_group_loss), "epoch": self.epoch})
-                wandb.log({"train_loss": loss, "train_regr_loss": reg_loss, "epoch": self.epoch})
                 loss.backward()
                 self.optimizer.step()
+            if distribution_loss:
+                wandb.log({"train_con_reg_group_loss": torch.mean(con_reg_group_loss)}, commit=False)
+            wandb.log({"train_loss": loss, "train_regr_loss": reg_loss}, commit=False)
             
             self.regression_model.eval()
             with torch.no_grad():
@@ -310,7 +313,7 @@ class CNN_Wrapper:
                     mse += squared_error(reg_output, demors)
                 mse /= len(self.valid_dataloader.dataset)
             
-            wandb.log({"val_mse": mse, "epoch": self.epoch})
+            wandb.log({"val_mse": mse})
             out_file = "regression_valid_result.txt"
             if distribution_loss:
                 out_file = f"dist_{out_file}"
