@@ -1,7 +1,7 @@
 {
-    "__comments":               "ST classification train with CBAM - ADNI1 & ADNI2 (lr 0.0005)",
+    "__comments":               "ST classification train with CBAM (no last layer) - ADNI1 & ADNI2 (lr 0.0003)",
     "process":                  "classification",
-    "dataset":                  "ADNI1_prob_full_data",
+    "dataset":                  "ADNI1_ADNI2_mmse",
     "external_dataset":         ["ADNI1"],
     "folds":                    [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
     "gpu_idx":                  0,
@@ -14,7 +14,7 @@
         "drop_rate":            0.137,
         "batch_size":           8,
         "balanced":             0,
-        "learning_rate":        0.0005,
+        "learning_rate":        0.0003,
         "train_epochs":         200
     }
 }

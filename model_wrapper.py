@@ -1,7 +1,7 @@
 from torch.utils.data import Dataset, DataLoader
-from model import _CNN
+from model_mtl_nddr import _CNN
 from model_class_attention import _CNN_classification
-from model_regr import _CNN_regression
+from model_regr_attention import _CNN_regression
 from dataloader import CNN_Data
 from loss import ConRegGroupLoss
 from utils import matrix_sum, get_acc, get_MCC, get_confusion_matrix, write_raw_score, squared_error
@@ -10,6 +10,7 @@ import csv
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from math import sqrt
 
 from torch.utils.data import ConcatDataset
 from tqdm import tqdm
@@ -33,7 +34,8 @@ class CNN_Wrapper:
                  model_name,
                  metric,
                  device,
-                 process):
+                 process,
+                 checkpoint_dir):
 
         """
             :param fil_num:    channel number
@@ -64,10 +66,11 @@ class CNN_Wrapper:
         self.get_con_reg_group_loss = ConRegGroupLoss(self.device)
         self.eval_metric = get_acc if metric == 'accuracy' else get_MCC
         self.process = process
+        self.parent_dir = checkpoint_dir
         if process == "valid":
             self.checkpoint_dir = './checkpoint_dir/valid/'
         else:
-            self.checkpoint_dir = './checkpoint_dir/{}_exp{}/'.format(self.model_name, self.cross_index)
+            self.checkpoint_dir = './checkpoint_dir/{}/{}_exp{}/'.format(self.parent_dir, self.model_name, self.cross_index)
         self.model = _CNN(fil_num=fil_num, drop_rate=drop_rate).to(self.device)
         self.classification_model = _CNN_classification(fil_num=fil_num, drop_rate=drop_rate).to(self.device)
         self.regression_model = _CNN_regression(fil_num=fil_num, drop_rate=drop_rate).to(self.device)
@@ -79,7 +82,10 @@ class CNN_Wrapper:
 
     def cross_validation(self, cross_index):
         self.cross_index = cross_index
-        self.checkpoint_dir = './checkpoint_dir/{}_exp{}/'.format(self.model_name, self.cross_index)
+        self.checkpoint_dir = './checkpoint_dir/{}/{}_exp{}/'.format(self.parent_dir, self.model_name, self.cross_index)
+        print(self.checkpoint_dir)
+        if not os.path.exists(self.checkpoint_dir):
+            os.makedirs(self.checkpoint_dir)
         with open("lookupcsv/{}.csv".format(self.dataset), 'r') as csv_file:
             num = len(list(csv.reader(csv_file))) // 10
         start = int(self.cross_index * num)
@@ -201,7 +207,7 @@ class CNN_Wrapper:
             clf_loss = self.criterion_clf(clf_output, labels)
             reg_loss = self.criterion_reg(reg_output, torch.unsqueeze(demors, dim=1))
             # timer_loss = time.perf_counter()
-            loss = clf_loss + reg_loss + torch.mean(per_loss)
+            loss = clf_loss + reg_loss + torch.mean(per_loss) if per_loss else clf_loss + reg_loss
             if distribution_loss:
                 con_reg_group_loss = self.get_con_reg_group_loss.apply(reg_output, demors, self.frequency_dict, labels)  
                 loss += torch.mean(con_reg_group_loss)
@@ -213,7 +219,11 @@ class CNN_Wrapper:
             # print(f"train loop time: {time.perf_counter() - start_timer}")
         if distribution_loss:
             wandb.log({"train_con_reg_group_loss": torch.mean(con_reg_group_loss)}, commit=False)
-        wandb.log({"train_loss": loss, "train_clf_loss": clf_loss, "train_regr_loss": reg_loss, "train_interaction_loss": torch.mean(per_loss)}, commit=False)
+        wandb.log({"train_loss": loss,
+                   "train_clf_loss": clf_loss,
+                   "train_regr_loss": reg_loss,
+                   "train_interaction_loss": torch.mean(per_loss) if per_loss else None
+                   }, commit=False)
         
 
 
@@ -262,6 +272,7 @@ class CNN_Wrapper:
                 for inputs, labels, demors in tqdm(self.valid_dataloader, desc="Test Epoch"):
                     inputs, labels = inputs.to(self.device), labels.to(self.device)
                     clf_output = self.classification_model(inputs)
+                    clf_val_loss = self.criterion_clf(clf_output, labels)
                     valid_matrix = matrix_sum(valid_matrix, get_confusion_matrix(clf_output, labels))
             valid_matrix = valid_matrix
 
@@ -270,7 +281,7 @@ class CNN_Wrapper:
                            str(round(self.eval_metric(valid_matrix), 4))+ '\n')
             print('{}th epoch validation confusion matrix:'.format(self.epoch), valid_matrix)
             print('eval_metric:', "%.4f" % self.eval_metric(valid_matrix))
-            wandb.log({"val_acc": self.eval_metric(valid_matrix), "epoch": self.epoch})
+            wandb.log({"val_acc": self.eval_metric(valid_matrix), "val_loss": clf_val_loss})
             self.save_checkpoint(valid_matrix, 0)
             self.epoch += 1
         print('Best model saved at the {}th epoch:'.format(self.optimal_epoch), self.optimal_valid_metric,
@@ -310,17 +321,18 @@ class CNN_Wrapper:
                 for inputs, labels, demors in tqdm(self.valid_dataloader, desc="Test Epoch"):
                     inputs, labels = inputs.to(self.device), labels.to(self.device)
                     reg_output = self.regression_model(inputs)
+                    reg_val_loss = self.criterion_reg(reg_output, torch.unsqueeze(demors, dim=1))
                     mse += squared_error(reg_output, demors)
                 mse /= len(self.valid_dataloader.dataset)
             
-            wandb.log({"val_mse": mse})
+            wandb.log({"val_rmse": sqrt(mse), "reg_val_loss":reg_val_loss})
             out_file = "regression_valid_result.txt"
             if distribution_loss:
                 out_file = f"dist_{out_file}"
             with open(self.checkpoint_dir + out_file, 'a') as file:
                 file.write(str(self.epoch) + ' ' + str(mse) + '\n')
-            print(f"{self.epoch}th epoch mean squared error: {mse}")
-            self.save_checkpoint_reg(mse)
+            print(f"{self.epoch}th epoch rooted mean squared error: {sqrt(mse)}")
+            self.save_checkpoint_reg(sqrt(mse))
             self.epoch += 1
 
         return self.optimal_valid_metric
@@ -335,13 +347,13 @@ class CNN_Wrapper:
             self.optimal_valid_metric = self.eval_metric(valid_matrix)
             self.optimal_valid_mse = valid_mse
             wandb.run.summary["best_accuracy"] = self.optimal_valid_metric * 100
-            wandb.run.summary["best_mse"] = self.optimal_valid_mse
-            # for root, Dir, Files in os.walk(self.checkpoint_dir):
-            #     for File in Files:
-            #         if File.endswith("pth"):
-            #             os.remove(os.path.join(self.checkpoint_dir, File))
-            # torch.save(self.model.state_dict(), '{}{}_{}.pth'.format(self.checkpoint_dir, self.model_name,
-            #                                                          self.optimal_epoch))
+            wandb.run.summary["best_rmse"] = self.optimal_valid_mse
+            for root, Dir, Files in os.walk(self.checkpoint_dir):
+                for File in Files:
+                    if File.endswith("pth"):
+                        os.remove(os.path.join(self.checkpoint_dir, File))
+            torch.save(self.model.state_dict(), '{}{}_{}.pth'.format(self.checkpoint_dir, self.model_name,
+                                                                     self.optimal_epoch))
 
     def save_checkpoint_reg(self, valid_mse):
         # Choose the optimal model. The performance of AD detection task is prioritized
@@ -349,13 +361,13 @@ class CNN_Wrapper:
             self.optimal_epoch = self.epoch
             self.optimal_valid_mse = valid_mse
             wandb.run.summary["best_accuracy"] = 0
-            wandb.run.summary["best_mse"] = self.optimal_valid_mse
-            # for root, Dir, Files in os.walk(self.checkpoint_dir):
-            #     for File in Files:
-            #         if File.endswith("pth"):
-            #             os.remove(os.path.join(self.checkpoint_dir, File))
-            # torch.save(self.model.state_dict(), '{}{}_{}.pth'.format(self.checkpoint_dir, self.model_name,
-            #                                                          self.optimal_epoch))
+            wandb.run.summary["best_rmse"] = self.optimal_valid_mse
+            for root, Dir, Files in os.walk(self.checkpoint_dir):
+                for File in Files:
+                    if File.endswith("pth"):
+                        os.remove(os.path.join(self.checkpoint_dir, File))
+            torch.save(self.model.state_dict(), '{}{}_{}.pth'.format(self.checkpoint_dir, self.model_name,
+                                                                     self.optimal_epoch))
 
 
     def test(self):

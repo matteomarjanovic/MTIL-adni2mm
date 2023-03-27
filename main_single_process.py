@@ -60,7 +60,8 @@ def cnn_main(config, process, gpu_index, fold_index):
                             model_name='cnn',
                             metric='accuracy',
                             device=gpu_index,
-                            process=process)
+                            process=process,
+                            checkpoint_dir=config["__comments"])
 
     if fold_index == -1:
         cnn.validate()
